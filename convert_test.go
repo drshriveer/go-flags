@@ -176,3 +176,68 @@ func TestConvertToMapWithDelimiter(t *testing.T) {
 
 	assertString(t, opts.StringStringMap["key"], "value")
 }
+
+type testEnum int
+
+const (
+	one testEnum = iota
+	two
+	three
+)
+
+func (t *testEnum) UnmarshalText(text []byte) error {
+	switch string(text) {
+	case "one":
+		*t = one
+	case "two":
+		*t = two
+	case "three":
+		*t = three
+	default:
+		return newErrorf(ErrMarshal, "invalid value %q", text)
+	}
+	return nil
+}
+
+func (t testEnum) MarshalText() ([]byte, error) {
+	switch t {
+	case one:
+		return []byte("one"), nil
+	case two:
+		return []byte("two"), nil
+	case three:
+		return []byte("three"), nil
+	default:
+		return nil, newErrorf(ErrMarshal, "invalid value %q", t)
+	}
+}
+
+func TestConvertUsesUnmarshalText(t *testing.T) {
+	var opt = struct {
+		Enum testEnum `long:"enum" required:"true"`
+	}{0}
+
+	p := NewNamedParser("test", Default)
+	_, err := p.AddCommand("mycmd", "test", "test", &opt)
+	if err != nil {
+		t.Fatalf("error not expected %+v", err)
+	}
+	_, err = p.ParseArgs([]string{"mycmd", "--enum=three"})
+	if err != nil {
+		t.Fatalf("error not expected %+v", err)
+	}
+	if opt.Enum != three {
+		t.Fatalf("expected three, got %v", opt.Enum)
+	}
+
+	grp, _ := p.AddGroup("test group", "", &opt)
+	o := grp.Options()[0]
+
+	marshalled, err := convertToString(o.value, o.tag)
+	if err != nil {
+		t.Fatalf("error not expected %+v", err)
+	}
+	if marshalled != "three" {
+		t.Fatalf("expected three, got %v", marshalled)
+	}
+}

@@ -5,6 +5,7 @@
 package flags
 
 import (
+	"encoding"
 	"fmt"
 	"reflect"
 	"strconv"
@@ -52,11 +53,15 @@ func getBase(options multiTag, base int) (int, error) {
 }
 
 func convertMarshal(val reflect.Value) (bool, string, error) {
-	// Check first for the Marshaler interface
+	// Check for a MarshalFlag or MarshalText interface:
 	if val.IsValid() && val.Type().NumMethod() > 0 && val.CanInterface() {
-		if marshaler, ok := val.Interface().(Marshaler); ok {
+		switch marshaler := val.Interface().(type) {
+		case Marshaler:
 			ret, err := marshaler.MarshalFlag()
 			return true, ret, err
+		case encoding.TextMarshaler:
+			ret, err := marshaler.MarshalText()
+			return true, string(ret), err
 		}
 	}
 
@@ -166,15 +171,22 @@ func convertToString(val reflect.Value, options multiTag) (string, error) {
 
 func convertUnmarshal(val string, retval reflect.Value) (bool, error) {
 	if retval.Type().NumMethod() > 0 && retval.CanInterface() {
-		if unmarshaler, ok := retval.Interface().(Unmarshaler); ok {
+		iFace := retval.Interface()
+		switch unmarshaler := iFace.(type) {
+		case Unmarshaler:
 			if retval.IsNil() {
 				retval.Set(reflect.New(retval.Type().Elem()))
-
 				// Re-assign from the new value
 				unmarshaler = retval.Interface().(Unmarshaler)
 			}
-
 			return true, unmarshaler.UnmarshalFlag(val)
+		case encoding.TextUnmarshaler:
+			if retval.IsNil() {
+				retval.Set(reflect.New(retval.Type().Elem()))
+				// Re-assign from the new value
+				unmarshaler = retval.Interface().(encoding.TextUnmarshaler)
+			}
+			return true, unmarshaler.UnmarshalText([]byte(val))
 		}
 	}
 
